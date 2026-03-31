@@ -46,8 +46,9 @@
       flex: 1;
       display: flex;
       align-items: stretch;
-      padding: 12px 20px;
+      padding: 8px 16px 4px;
       min-height: 0;
+      gap: 0;
     }
 
     .page {
@@ -83,6 +84,7 @@
       bottom: 8px;
       font-size: 11px;
       color: #888;
+      z-index: 5;
     }
     .right-page .page-num { left: 12px; }
     .left-page  .page-num { right: 12px; }
@@ -113,9 +115,9 @@
       background: #fffdf5;
       border: 2px solid #c9a227;
       border-radius: 16px;
-      padding: 28px 36px 24px;
-      max-width: 75%;
-      min-width: 280px;
+      padding: 28px 36px 20px;
+      max-width: 78%;
+      min-width: 300px;
       text-align: center;
       box-shadow: 0 8px 32px rgba(0,0,0,0.35);
       position: relative;
@@ -125,7 +127,6 @@
       from { transform: scale(0.85); opacity: 0; }
       to   { transform: scale(1);    opacity: 1; }
     }
-
     #popup-label {
       font-size: 13px;
       color: #8B4513;
@@ -135,12 +136,40 @@
     }
     #popup-verse {
       font-family: 'Amiri Quran', 'Traditional Arabic', serif;
-      font-size: 26px;
-      line-height: 1.8;
+      font-size: 24px;
+      line-height: 1.9;
       color: #000;
       direction: rtl;
+      margin-bottom: 16px;
     }
     #popup-verse .kw { color: #cc0000; font-weight: bold; }
+
+    /* زر الصوت في البوبأب */
+    #popup-audio-area {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .audio-btn {
+      background: linear-gradient(135deg, #c9a227, #8B6914);
+      border: none;
+      color: #fff;
+      padding: 7px 18px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .audio-btn:hover { opacity: 0.88; transform: scale(1.03); }
+    .audio-btn:active { transform: scale(0.97); }
+    .audio-btn svg { width: 16px; height: 16px; fill: #fff; flex-shrink: 0; }
+    #audio-status { font-size: 11px; color: #999; min-width: 80px; }
 
     #popup-close {
       position: absolute;
@@ -155,21 +184,41 @@
     }
     #popup-close:hover { color: #555; }
 
-    /* hover على الصناديق القابلة للضغط */
+    /* ── الرابط الذهني أسفل الصفحة ── */
+    .mental-link-bar {
+      position: absolute;
+      bottom: 22px;
+      left: 10px;
+      right: 10px;
+      background: linear-gradient(135deg, rgba(201,162,39,0.13), rgba(139,105,20,0.18));
+      border: 1.5px solid rgba(201,162,39,0.5);
+      border-radius: 10px;
+      padding: 5px 10px;
+      text-align: center;
+      z-index: 4;
+      pointer-events: none;
+    }
+
     .clickable { cursor: pointer; }
     .clickable:hover .box-bg { filter: brightness(0.94); }
+
+    /* زر صوت صغير فوق الصناديق */
+    .audio-icon-btn {
+      cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    .audio-icon-btn:hover { opacity: 1; }
   </style>
 </head>
 <body>
 
-<!-- شريط التنقل -->
 <div id="nav-bar">
   <button id="btn-next" onclick="turnPage(1)">&#x25C4; التالي</button>
   <span id="spread-label">ص ١–٢</span>
   <button id="btn-prev" onclick="turnPage(-1)" disabled>السابق &#x25BA;</button>
 </div>
 
-<!-- الكتاب -->
 <div id="book">
   <div class="page right-page active" id="right-page">
     <span class="page-num" id="right-num">١</span>
@@ -186,53 +235,404 @@
     <button id="popup-close" onclick="closePopup()">&#x2715;</button>
     <div id="popup-label"></div>
     <div id="popup-verse"></div>
+    <div id="popup-audio-area">
+      <button class="audio-btn" id="play-btn" onclick="playAyah()">
+        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        استمع بصوت الشيخ ياسر الدوسري
+      </button>
+      <span id="audio-status"></span>
+    </div>
   </div>
 </div>
 
+<audio id="ayah-audio" preload="none"></audio>
+
 <script>
 // ══════════════════════════════════════════
-// مخزن بيانات الآيات العالمي
+// بيانات الآيات + الصوت
 // ══════════════════════════════════════════
 const _popupData = {};
+let _currentAudio = { surah: 0, ayah: 0, ayahEnd: 0 };
+
+// رقم الشيخ ياسر الدوسري في API
+const DOSARI_ID = 10; // everyayah.com reciter id
+
+function ayahAudioURL(surah, ayahNum) {
+  const s = String(surah).padStart(3,'0');
+  const a = String(ayahNum).padStart(3,'0');
+  // everyayah.com — Yasser Al-Dossary
+  return `https://everyayah.com/data/Yasser_Ad-Dossary_128kbps/${s}${a}.mp3`;
+}
+
+const audioEl = document.getElementById('ayah-audio');
+const statusEl = document.getElementById('audio-status');
+const playBtn  = document.getElementById('play-btn');
+
+audioEl.addEventListener('play',  () => { statusEl.textContent = '▶ يُشغَّل...'; });
+audioEl.addEventListener('ended', () => { statusEl.textContent = '✓ انتهى'; });
+audioEl.addEventListener('error', () => { statusEl.textContent = '⚠ تعذّر التشغيل'; });
+audioEl.addEventListener('waiting',() => { statusEl.textContent = '⏳ جارٍ التحميل'; });
+
+function playAyah() {
+  const d = _currentAudio;
+  if (!d.surah) return;
+  statusEl.textContent = '⏳ جارٍ التحميل';
+  audioEl.pause();
+  audioEl.src = ayahAudioURL(d.surah, d.ayahStart);
+  audioEl.load();
+  audioEl.play().catch(() => { statusEl.textContent = '⚠ تعذّر التشغيل'; });
+}
 
 // ══════════════════════════════════════════
 // Popup
 // ══════════════════════════════════════════
-function showPopup(label, html) {
+function showPopup(label, html, surah, ayahStart, ayahEnd) {
   document.getElementById('popup-label').textContent = label;
   document.getElementById('popup-verse').innerHTML = html;
+  _currentAudio = { surah, ayahStart: ayahStart || 1, ayahEnd: ayahEnd || ayahStart || 1 };
+  statusEl.textContent = '';
+  audioEl.pause();
+  audioEl.src = '';
   document.getElementById('popup-overlay').classList.add('open');
 }
 function closePopup() {
+  audioEl.pause();
   document.getElementById('popup-overlay').classList.remove('open');
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closePopup(); });
 
-// ربط حدث النقر على SVG (بدل onclick مضمّن)
 function attachClickHandler(svg) {
   svg.addEventListener('click', e => {
     const g = e.target.closest('[data-vkey]');
     if (!g) return;
     const v = _popupData[g.dataset.vkey];
-    if (v) showPopup(v.label + '  ·  آية ' + v.ayah, v.html);
+    if (v) showPopup(v.label + '  ·  آية ' + v.ayah, v.html, v.surah, v.ayahStart, v.ayahEnd);
   });
 }
 
 // ══════════════════════════════════════════
-// الصفحات
+// مساعد: صندوق قابل للضغط
 // ══════════════════════════════════════════
-const pages = {
-  1: buildPage1,
-  2: buildPage2,
-};
+function box(x, y, w, h, stroke, fill, label, ayah, keyword, vkey, showAyah=true) {
+  const cx  = x + w / 2;
+  const labelParts = label.split('\n');
+  const labelH = 28 + (labelParts.length - 1) * 20;
+  const kwY = y + labelH + Math.round((h - labelH - 20) / 2) + 14;
+  const kwText = showAyah ? `${keyword} ﴿${ayah}﴾` : keyword;
 
+  let labelSVG = '';
+  labelParts.forEach((part, i) => {
+    const fs = labelParts.length > 2 ? 15 : labelParts.length > 1 ? 17 : 20;
+    labelSVG += `<text x="${cx}" y="${y + 26 + i*20}" font-family="Traditional Arabic,Arial" font-size="${fs}"
+          font-weight="bold" text-anchor="middle" fill="${stroke}">${part}</text>`;
+  });
+  const lineY = y + 26 + (labelParts.length - 1) * 20 + 7;
+
+  // أيقونة الصوت الصغيرة
+  const iconX = x + w - 22, iconY = y + 6;
+  const audioIcon = `
+    <g class="audio-icon-btn" data-vkey="${vkey}">
+      <circle cx="${iconX+8}" cy="${iconY+8}" r="9" fill="${stroke}" opacity="0.18"/>
+      <polygon points="${iconX+5},${iconY+5} ${iconX+5},${iconY+11} ${iconX+13},${iconY+8}" fill="${stroke}"/>
+    </g>`;
+
+  return `
+    <g class="clickable" data-vkey="${vkey}">
+      <rect class="box-bg" x="${x}" y="${y}" width="${w}" height="${h}"
+            fill="${fill}" stroke="${stroke}" stroke-width="2.5" rx="8"/>
+      ${labelSVG}
+      <line x1="${x+14}" y1="${lineY}" x2="${x+w-14}" y2="${lineY}"
+            stroke="${stroke}" stroke-width="1.2" opacity="0.5"/>
+      <text x="${cx}" y="${kwY}"
+            font-family="'Amiri Quran','Traditional Arabic',serif"
+            font-size="22" text-anchor="middle" font-weight="bold" fill="#cc0000">${kwText}</text>
+      <text x="${cx}" y="${y+h-5}" font-family="Traditional Arabic,Arial" font-size="7.5"
+            text-anchor="middle" fill="${stroke}" opacity="0.35">اضغط للآية + الاستماع</text>
+      ${audioIcon}
+    </g>`;
+}
+
+// ══════════════════════════════════════════
+// الرابط الذهني
+// ══════════════════════════════════════════
+function mentalLinkHTML(from, arrow, to, color) {
+  return `
+  <div class="mental-link-bar">
+    <svg viewBox="0 0 480 36" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:36px">
+      <rect x="0" y="0" width="480" height="36" fill="none"/>
+      <!-- من -->
+      <rect x="2" y="6" width="145" height="24" rx="6" fill="${color}" opacity="0.15" stroke="${color}" stroke-width="1.2"/>
+      <text x="74" y="22" font-family="'Amiri Quran','Traditional Arabic',serif" font-size="13"
+            text-anchor="middle" fill="${color}" font-weight="bold">${from}</text>
+      <!-- سهم -->
+      <text x="240" y="24" font-family="Arial" font-size="20" text-anchor="middle" fill="${color}" opacity="0.7">${arrow}</text>
+      <!-- إلى -->
+      <rect x="333" y="6" width="145" height="24" rx="6" fill="${color}" opacity="0.15" stroke="${color}" stroke-width="1.2"/>
+      <text x="405" y="22" font-family="'Amiri Quran','Traditional Arabic',serif" font-size="13"
+            text-anchor="middle" fill="${color}" font-weight="bold">${to}</text>
+    </svg>
+  </div>`;
+}
+
+// ══════════════════════════════════════════
+// صفحة 1 — الفاتحة
+// ══════════════════════════════════════════
+function buildPage1() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 520 720');
+
+  Object.assign(_popupData, {
+    p1_bas:  { label:'بسملة',           ayah:'١', html:'<span class="kw">بِسْمِ ٱللَّهِ</span> ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ', surah:1, ayahStart:1 },
+    p1_hmd:  { label:'حمد',             ayah:'٢', html:'<span class="kw">ٱلْحَمْدُ لِلَّهِ</span> رَبِّ ٱلْعَـٰلَمِينَ', surah:1, ayahStart:2 },
+    p1_rhm:  { label:'رحمة',            ayah:'٣', html:'<span class="kw">ٱلرَّحْمَـٰنِ</span> ٱلرَّحِيمِ', surah:1, ayahStart:3 },
+    p1_mlk:  { label:'ملك',             ayah:'٤', html:'<span class="kw">مَالِكِ</span> يَوْمِ ٱلدِّينِ', surah:1, ayahStart:4 },
+    p1_ikl:  { label:'إخلاص',          ayah:'٥', html:'<span class="kw">إِيَّاكَ</span> نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ', surah:1, ayahStart:5 },
+    p1_hdy1: { label:'هداية',           ayah:'٦', html:'<span class="kw">ٱهْدِنَا</span> ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ', surah:1, ayahStart:6 },
+    p1_hdy2: { label:'تخصيص الهداية', ayah:'٧', html:'<span class="kw">صِرَٰطَ</span> ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ<br>غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ', surah:1, ayahStart:7 },
+  });
+
+  const G=10,M=12,W=496;
+  const half=W/2-G/2;
+  const basBox   = box(M+W/2-165, 58, 330, 88, '#2E7D32','#eef7ee','بسملة','١','بِسْمِ ٱللَّهِ','p1_bas');
+  const rahmBox  = box(M, 156, half, 96, '#2E7D32','#eef7ee','رحمة','٣','ٱلرَّحْمَـٰنِ','p1_rhm',false);
+  const hamdBox  = box(M+W/2+G/2, 156, half, 96, '#2E7D32','#eef7ee','حمد','٢','ٱلْحَمْدُ لِلَّهِ','p1_hmd',false);
+  const malikBox = box(M+W/2+G/2, 264, half, 118, '#1565C0','#eef0fb','ملك','٤','مَالِكِ','p1_mlk');
+  const iklBox   = box(M, 264, half, 118, '#1565C0','#eef0fb','إخلاص','٥','إِيَّاكَ','p1_ikl',false);
+  const hdyBox   = box(M+W/2+G/2, 394, half, 108, '#E65100','#fef6ee','هداية','٦','ٱهْدِنَا','p1_hdy1');
+  const tkhBox   = box(M, 394, half, 108, '#E65100','#fef6ee','تخصيص الهداية','٧','صِرَاطَ','p1_hdy2');
+
+  const cx = M+W/2;
+  svg.innerHTML = `
+    <rect width="520" height="720" fill="#fffdf5"/>
+    <rect x="0" y="0" width="520" height="54" fill="#dfc28a" stroke="#c9a227" stroke-width="2.5"/>
+    <line x1="0" y1="54" x2="520" y2="54" stroke="#8B6914" stroke-width="2"/>
+    <text x="14" y="34" font-family="Traditional Arabic,Arial" font-size="20" font-weight="bold" fill="#3E1F00">ص ١</text>
+    <text x="260" y="24" font-family="Traditional Arabic,Arial" font-size="17" font-weight="bold" text-anchor="middle" fill="#3E1F00">سورة الفاتحة</text>
+    <text x="260" y="44" font-family="Traditional Arabic,Arial" font-size="12" text-anchor="middle" fill="#6B3A10">٧ آيات · من آية ١ إلى آية ٧</text>
+    <rect x="450" y="8" width="58" height="32" fill="#c9a227" stroke="#8B6914" stroke-width="1.5" rx="14"/>
+    <text x="479" y="30" font-family="Traditional Arabic,Arial" font-size="14" text-anchor="middle" fill="#fff" font-weight="bold">١–٧</text>
+    <line x1="${cx}" y1="146" x2="${M+half/2}" y2="156" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="146" x2="${M+W/2+G/2+half/2}" y2="156" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    ${basBox}${rahmBox}${hamdBox}${malikBox}${iklBox}${hdyBox}${tkhBox}
+    <!-- الرابط الذهني -->
+    <rect x="10" y="514" width="500" height="46" rx="10" fill="rgba(201,162,39,0.10)" stroke="rgba(201,162,39,0.5)" stroke-width="1.5"/>
+    <text x="260" y="530" font-family="Traditional Arabic,Arial" font-size="11" text-anchor="middle" fill="#8B6914" opacity="0.8">🔗 الرابط الذهني</text>
+    <text x="260" y="550" font-family="'Amiri Quran','Traditional Arabic',serif" font-size="14" text-anchor="middle" fill="#5D3A00">ابدأ بـ بِسْمِ ٱللَّهِ  ←  لتصل إلى  صِرَاطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ</text>
+    <text x="14" y="712" font-family="Traditional Arabic,Arial" font-size="10" fill="#aaa">آخر آية: ٧</text>
+    <text x="260" y="712" font-family="Traditional Arabic,Arial" font-size="10" text-anchor="middle" fill="#ccc">اضغط على أي صندوق لرؤية الآية والاستماع إليها</text>
+  `;
+  attachClickHandler(svg);
+  return svg;
+}
+
+// ══════════════════════════════════════════
+// صفحة 2 — البقرة ١–٥
+// ══════════════════════════════════════════
+function buildPage2() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 520 720');
+
+  Object.assign(_popupData, {
+    p2_ijz: { label:'إعجاز',        ayah:'١', html:'<span class="kw">الٓمٓ</span>', surah:2, ayahStart:1 },
+    p2_ktb: { label:'كتاب المتقين', ayah:'٢', html:'<span class="kw">ذَٰلِكَ</span> ٱلْكِتَـٰبُ لَا رَيْبَ فِيهِ هُدًى لِّلْمُتَّقِينَ', surah:2, ayahStart:2 },
+    p2_ghb: { label:'غيبي',         ayah:'٣', html:'ٱلَّذِينَ يُؤْمِنُونَ بِ<span class="kw">ٱلْغَيْبِ</span> وَيُقِيمُونَ ٱلصَّلَوٰةَ وَمِمَّا رَزَقْنَـٰهُمْ يُنفِقُونَ', surah:2, ayahStart:3 },
+    p2_why: { label:'وحي يقيني',    ayah:'٤', html:'وَٱلَّذِينَ يُؤْمِنُونَ بِمَآ <span class="kw">أُنزِلَ</span> إِلَيْكَ وَمَآ أُنزِلَ مِن قَبْلِكَ وَبِٱلْـَٔاخِرَةِ هُمْ يُوقِنُونَ', surah:2, ayahStart:4 },
+    p2_hdy: { label:'هدى وفلاح',   ayah:'٥', html:'<span class="kw">أُو۟لَـٰٓئِكَ</span> عَلَىٰ هُدًى مِّن رَّبِّهِمْ وَأُو۟لَـٰٓئِكَ هُمُ ٱلْمُفْلِحُونَ', surah:2, ayahStart:5 },
+  });
+
+  const G=10,M=12,W=496;
+  const half=W/2-G/2;
+  const cx=M+W/2;
+  const ijzBox  = box(M+W/2-165, 58, 330, 88, '#2E7D32','#eef7ee','إعجاز','١','الٓمٓ','p2_ijz');
+  const ktbBox  = box(M+W/2+G/2, 156, half, 96, '#2E7D32','#eef7ee','كتاب المتقين','٢','ذَٰلِكَ','p2_ktb');
+  const ghbBox  = box(M, 156, half, 96, '#2E7D32','#eef7ee','إيمان غيبي','٣','ٱلَّذِينَ','p2_ghb');
+  const wahyBox = box(M+W/2+G/2, 264, half, 118, '#1565C0','#eef0fb','وحي يقيني','٤','وَٱلَّذِينَ','p2_why');
+  const hudaBox = box(M, 264, half, 118, '#1565C0','#eef0fb','هدى وفلاح\n(اسم إشارة جمع)','٥','أُو۟لَـٰٓئِكَ','p2_hdy');
+
+  svg.innerHTML = `
+    <rect width="520" height="720" fill="#fffdf5"/>
+    <rect x="0" y="0" width="520" height="54" fill="#dfc28a" stroke="#c9a227" stroke-width="2.5"/>
+    <line x1="0" y1="54" x2="520" y2="54" stroke="#8B6914" stroke-width="2"/>
+    <text x="14" y="34" font-family="Traditional Arabic,Arial" font-size="20" font-weight="bold" fill="#3E1F00">ص ٢</text>
+    <text x="260" y="24" font-family="Traditional Arabic,Arial" font-size="17" font-weight="bold" text-anchor="middle" fill="#3E1F00">سورة البقرة</text>
+    <text x="260" y="44" font-family="Traditional Arabic,Arial" font-size="12" text-anchor="middle" fill="#6B3A10">٥ آيات · من آية ١ إلى آية ٥</text>
+    <rect x="450" y="8" width="58" height="32" fill="#c9a227" stroke="#8B6914" stroke-width="1.5" rx="14"/>
+    <text x="479" y="30" font-family="Traditional Arabic,Arial" font-size="14" text-anchor="middle" fill="#fff" font-weight="bold">١–٥</text>
+    <line x1="${cx}" y1="146" x2="${M+half/2}" y2="156" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="146" x2="${M+W/2+G/2+half/2}" y2="156" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    ${ijzBox}${ktbBox}${ghbBox}${wahyBox}${hudaBox}
+    <!-- الرابط الذهني -->
+    <rect x="10" y="396" width="500" height="46" rx="10" fill="rgba(21,101,192,0.08)" stroke="rgba(21,101,192,0.4)" stroke-width="1.5"/>
+    <text x="260" y="412" font-family="Traditional Arabic,Arial" font-size="11" text-anchor="middle" fill="#1565C0" opacity="0.8">🔗 الرابط الذهني</text>
+    <text x="260" y="432" font-family="'Amiri Quran','Traditional Arabic',serif" font-size="14" text-anchor="middle" fill="#0D3F7A">إعجاز الكتاب  ←  يقود إلى  الفلاح</text>
+    <text x="14" y="712" font-family="Traditional Arabic,Arial" font-size="10" fill="#aaa">آخر آية: ٥</text>
+    <text x="260" y="712" font-family="Traditional Arabic,Arial" font-size="10" text-anchor="middle" fill="#ccc">اضغط على أي صندوق لرؤية الآية والاستماع إليها</text>
+  `;
+  attachClickHandler(svg);
+  return svg;
+}
+
+// ══════════════════════════════════════════
+// صفحة 3 — البقرة ٦–١٦
+// ══════════════════════════════════════════
+function buildPage3() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 520 730');
+
+  Object.assign(_popupData, {
+    p3_kfr:     { label:'الكفار — ختمهم عظيم', ayah:'٦–٧', html:'إِنَّ <span class="kw">ٱلَّذِينَ كَفَرُوا۟</span> سَوَآءٌ عَلَيْهِمْ ءَأَنذَرْتَهُمْ أَمْ لَمْ تُنذِرْهُمْ لَا يُؤْمِنُونَ ۝ خَتَمَ ٱللَّهُ عَلَىٰ قُلُوبِهِمْ وَعَلَىٰ سَمْعِهِمْ وَعَلَىٰٓ أَبْصَـٰرِهِمْ غِشَـٰوَةٌ وَلَهُمْ عَذَابٌ عَظِيمٌ', surah:2, ayahStart:6 },
+    p3_nfq_mkh: { label:'مخادع', ayah:'٨–٩', html:'وَمِنَ <span class="kw">ٱلنَّاسِ</span> مَن يَقُولُ ءَامَنَّا بِٱللَّهِ وَبِٱلْيَوْمِ ٱلْـَٔاخِرِ وَمَا هُم بِمُؤْمِنِينَ ۝ يُخَـٰدِعُونَ ٱللَّهَ وَٱلَّذِينَ ءَامَنُوا۟', surah:2, ayahStart:8 },
+    p3_nfq_mrd: { label:'في قلوبهم مرض', ayah:'١٠', html:'فِى قُلُوبِهِم <span class="kw">مَّرَضٌ</span> فَزَادَهُمُ ٱللَّهُ مَرَضًا وَلَهُمْ عَذَابٌ أَلِيمٌ بِمَا كَانُوا۟ يَكْذِبُونَ', surah:2, ayahStart:10 },
+    p3_nfq_kzb: { label:'الكذب', ayah:'١٠', html:'وَلَهُمْ عَذَابٌ أَلِيمٌ بِمَا كَانُوا۟ <span class="kw">يَكْذِبُونَ</span>', surah:2, ayahStart:10 },
+    p3_fsd_tkh: { label:'تخلية — قولهم مصلحون', ayah:'١١', html:'وَإِذَا قِيلَ لَهُمْ لَا <span class="kw">تُفْسِدُوا۟</span> فِى ٱلْأَرْضِ قَالُوٓا۟ إِنَّمَا نَحْنُ مُصْلِحُونَ', surah:2, ayahStart:11 },
+    p3_fsd_tnh: { label:'تنبيه — المفسد لا يشعر', ayah:'١٢', html:'أَلَآ إِنَّهُمْ هُمُ <span class="kw">ٱلْمُفْسِدُونَ</span> وَلَـٰكِن لَّا يَشْعُرُونَ', surah:2, ayahStart:12 },
+    p3_fsd_thl: { label:'تحلية — السفيه لا يعلم', ayah:'١٣', html:'وَإِذَا قِيلَ لَهُمْ ءَامِنُوا۟ كَمَآ ءَامَنَ ٱلنَّاسُ قَالُوٓا۟ أَنُؤْمِنُ كَمَآ ءَامَنَ <span class="kw">ٱلسُّفَهَآءُ</span> أَلَآ إِنَّهُمْ هُمُ ٱلسُّفَهَآءُ وَلَـٰكِن لَّا يَعْلَمُونَ', surah:2, ayahStart:13 },
+    p3_lqy_ist: { label:'لقيا المؤمنين — يستهزئ', ayah:'١٤', html:'وَإِذَا لَقُوا۟ ٱلَّذِينَ ءَامَنُوا۟ قَالُوٓا۟ ءَامَنَّا وَإِذَا خَلَوْا۟ إِلَىٰ <span class="kw">شَيَـٰطِينِهِمْ</span> قَالُوٓا۟ إِنَّا مَعَكُمْ إِنَّمَا نَحْنُ مُسْتَهْزِءُونَ', surah:2, ayahStart:14 },
+    p3_lqy_sth: { label:'الله يستهزئ بهم', ayah:'١٥', html:'<span class="kw">ٱللَّهُ يَسْتَهْزِئُ</span> بِهِمْ وَيَمُدُّهُمْ فِى طُغْيَـٰنِهِمْ يَعْمَهُونَ', surah:2, ayahStart:15 },
+    p3_lqy_tjr: { label:'التجارة الخاسرة\n(اسم إشارة جمع)', ayah:'١٦', html:'<span class="kw">أُو۟لَـٰٓئِكَ</span> ٱلَّذِينَ ٱشْتَرَوُا۟ ٱلضَّلَـٰلَةَ بِٱلْهُدَىٰ فَمَا رَبِحَت تِّجَـٰرَتُهُمْ وَمَا كَانُوا۟ مُهْتَدِينَ', surah:2, ayahStart:16 },
+  });
+
+  const G=10,M=12,W=496;
+  const half=W/2-G/2;
+  const cx=M+W/2;
+
+  const kfrBox  = box(M, 58, W, 80, '#B71C1C','#fdecea','الكفار — ختمهم عظيم','٦–٧','إِنَّ ٱلَّذِينَ كَفَرُوا۟','p3_kfr');
+
+  const t1topY=148; const t1topH=78;
+  const mkhBox  = box(M+W/2-155, t1topY, 310, t1topH, '#6A1B9A','#f5eefb','مخادع','٨–٩','وَمِنَ ٱلنَّاسِ','p3_nfq_mkh');
+  const t1botY=t1topY+t1topH+G;
+  const mrdBox  = box(M+W/2+G/2, t1botY, half, 82, '#6A1B9A','#f5eefb','في قلوبهم مرض','١٠','مَّرَضٌ','p3_nfq_mrd');
+  const kzbBox  = box(M, t1botY, half, 82, '#6A1B9A','#f5eefb','الكذب','١٠','يَكْذِبُونَ','p3_nfq_kzb');
+
+  const t2topY=t1botY+82+G; const t2topH=74;
+  const tkhBox  = box(M+W/2-155, t2topY, 310, t2topH, '#1565C0','#eef0fb','تخلية — قولهم مصلحون','١١','لَا تُفْسِدُوا۟','p3_fsd_tkh');
+  const t2botY=t2topY+t2topH+G;
+  const tnhBox  = box(M+W/2+G/2, t2botY, half, 76, '#1565C0','#eef0fb','تنبيه — لا يشعر','١٢','ٱلْمُفْسِدُونَ','p3_fsd_tnh');
+  const thlBox  = box(M, t2botY, half, 76, '#1565C0','#eef0fb','تحلية — لا يعلم','١٣','ءَامِنُوا۟','p3_fsd_thl');
+
+  const t3topY=t2botY+76+G; const t3topH=72;
+  const istBox  = box(M+W/2-155, t3topY, 310, t3topH, '#E65100','#fef6ee','لقيا المؤمنين — يستهزئ','١٤','وَإِذَا لَقُوا۟','p3_lqy_ist');
+  const t3botY=t3topY+t3topH+G;
+  const sthBox  = box(M+W/2+G/2, t3botY, half, 70, '#E65100','#fef6ee','الله يستهزئ','١٥','يَسْتَهْزِئُ','p3_lqy_sth');
+  const tjrBox  = box(M, t3botY, half, 70, '#E65100','#fef6ee','التجارة الخاسرة\n(جمع)','١٦','أُو۟لَـٰٓئِكَ','p3_lqy_tjr');
+
+  const lnkY = t3botY+70+8;
+
+  svg.innerHTML = `
+    <rect width="520" height="730" fill="#fffdf5"/>
+    <rect x="0" y="0" width="520" height="54" fill="#dfc28a" stroke="#c9a227" stroke-width="2.5"/>
+    <line x1="0" y1="54" x2="520" y2="54" stroke="#8B6914" stroke-width="2"/>
+    <text x="14" y="34" font-family="Traditional Arabic,Arial" font-size="20" font-weight="bold" fill="#3E1F00">ص ٣</text>
+    <text x="260" y="24" font-family="Traditional Arabic,Arial" font-size="17" font-weight="bold" text-anchor="middle" fill="#3E1F00">سورة البقرة</text>
+    <text x="260" y="44" font-family="Traditional Arabic,Arial" font-size="12" text-anchor="middle" fill="#6B3A10">١١ آية · من آية ٦ إلى آية ١٦</text>
+    <rect x="450" y="8" width="58" height="32" fill="#c9a227" stroke="#8B6914" stroke-width="1.5" rx="14"/>
+    <text x="479" y="30" font-family="Traditional Arabic,Arial" font-size="14" text-anchor="middle" fill="#fff" font-weight="bold">٦–١٦</text>
+
+    <line x1="${cx}" y1="${t1topY+t1topH}" x2="${M+half/2}" y2="${t1botY}" stroke="#6A1B9A" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="${t1topY+t1topH}" x2="${M+W/2+G/2+half/2}" y2="${t1botY}" stroke="#6A1B9A" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="${t2topY+t2topH}" x2="${M+half/2}" y2="${t2botY}" stroke="#1565C0" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="${t2topY+t2topH}" x2="${M+W/2+G/2+half/2}" y2="${t2botY}" stroke="#1565C0" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="${t3topY+t3topH}" x2="${M+half/2}" y2="${t3botY}" stroke="#E65100" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="${t3topY+t3topH}" x2="${M+W/2+G/2+half/2}" y2="${t3botY}" stroke="#E65100" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+
+    ${kfrBox}${mkhBox}${mrdBox}${kzbBox}${tkhBox}${tnhBox}${thlBox}${istBox}${sthBox}${tjrBox}
+
+    <!-- الرابط الذهني -->
+    <rect x="10" y="${lnkY}" width="500" height="46" rx="10" fill="rgba(183,28,28,0.07)" stroke="rgba(183,28,28,0.35)" stroke-width="1.5"/>
+    <text x="260" y="${lnkY+16}" font-family="Traditional Arabic,Arial" font-size="11" text-anchor="middle" fill="#B71C1C" opacity="0.8">🔗 الرابط الذهني</text>
+    <text x="260" y="${lnkY+36}" font-family="'Amiri Quran','Traditional Arabic',serif" font-size="13" text-anchor="middle" fill="#6D0000">ختم الكفار  ←  نفاق ومرض  ←  التجارة الخاسرة</text>
+
+    <text x="14"  y="722" font-family="Traditional Arabic,Arial" font-size="10" fill="#aaa">آخر آية: ١٦</text>
+    <text x="260" y="722" font-family="Traditional Arabic,Arial" font-size="10" text-anchor="middle" fill="#ccc">اضغط على أي صندوق لرؤية الآية والاستماع إليها</text>
+  `;
+  attachClickHandler(svg);
+  return svg;
+}
+
+// ══════════════════════════════════════════
+// صفحة 4 — البقرة ١٧–٢٣
+// ══════════════════════════════════════════
+function buildPage4() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 520 730');
+
+  Object.assign(_popupData, {
+    p4_mth_nar: { label:'مثل ناري — لا يبصرون', ayah:'١٧', html:'مَثَلُهُمْ كَمَثَلِ ٱلَّذِى ٱسْتَوْقَدَ <span class="kw">نَارًا</span> فَلَمَّآ أَضَاءَتْ مَا حَوْلَهُۥ ذَهَبَ ٱللَّهُ بِنُورِهِمْ وَتَرَكَهُمْ فِى ظُلُمَـٰتٍ لَّا يُبْصِرُونَ', surah:2, ayahStart:17 },
+    p4_mth_smm: { label:'صُمٌّ — لا يرجعون', ayah:'١٨', html:'<span class="kw">صُمٌّۢ</span> بُكْمٌ عُمْىٌ فَهُمْ لَا يَرْجِعُونَ', surah:2, ayahStart:18 },
+    p4_mth_maa: { label:'مثل مائي\n(محيط بالكافرين)', ayah:'١٩–٢٠', html:'أَوْ <span class="kw">كَصَيِّبٍ</span> مِّنَ ٱلسَّمَآءِ فِيهِ ظُلُمَـٰتٌ وَرَعْدٌ وَبَرْقٌ … وَٱللَّهُ مُحِيطٌ بِٱلْكَـٰفِرِينَ', surah:2, ayahStart:19 },
+    p4_brq_dll: { label:'البرق — دليل القدرة', ayah:'٢٠', html:'يَكَادُ <span class="kw">ٱلْبَرْقُ</span> يَخْطَفُ أَبْصَـٰرَهُمْ كُلَّمَا أَضَآءَ لَهُم مَّشَوْا۟ فِيهِ وَإِذَآ أَظْلَمَ عَلَيْهِمْ قَامُوا۟', surah:2, ayahStart:20 },
+    p4_nda_ibd: { label:'أول نداء\n(العبادة → التقوى)', ayah:'٢١', html:'يَـٰٓأَيُّهَا <span class="kw">ٱلنَّاسُ</span> ٱعْبُدُوا۟ رَبَّكُمُ ٱلَّذِى خَلَقَكُمْ وَٱلَّذِينَ مِن قَبْلِكُمْ لَعَلَّكُمْ تَتَّقُونَ', surah:2, ayahStart:21 },
+    p4_nda_wsm: { label:'تسخير الوسائل\nوأنتم تعلمون\n(اسم موصول مفرد)', ayah:'٢٢', html:'ٱلَّذِى جَعَلَ لَكُمُ ٱلْأَرْضَ فِرَٰشًا وَٱلسَّمَآءَ بِنَآءً وَأَنزَلَ مِنَ ٱلسَّمَآءِ مَآءً فَأَخْرَجَ بِهِۦ مِنَ ٱلثَّمَرَٰتِ رِزْقًا لَّكُمْ <span class="kw">فَلَا تَجْعَلُوا۟</span> لِلَّهِ أَندَادًا وَأَنتُمْ تَعْلَمُونَ', surah:2, ayahStart:22 },
+    p4_tcd_all: { label:'تحدي الصدق وفشله\nنار حقيقية للكافرين', ayah:'٢٣', html:'وَإِن كُنتُمْ فِى رَيْبٍ مِّمَّا نَزَّلْنَا عَلَىٰ عَبْدِنَا فَأْتُوا۟ بِسُورَةٍ مِّن مِّثْلِهِۦ … <span class="kw">فَإِن لَّمْ تَفْعَلُوا۟</span> وَلَن تَفْعَلُوا۟ فَٱتَّقُوا۟ ٱلنَّارَ ٱلَّتِىٓ وَقُودُهَا ٱلنَّاسُ وَٱلْحِجَارَةُ أُعِدَّتْ لِلْكَـٰفِرِينَ', surah:2, ayahStart:23 },
+  });
+
+  const G=10,M=12,W=496;
+  const half=W/2-G/2;
+  const cx=M+W/2;
+
+  const t1topY=58; const t1topH=80;
+  const narBox = box(M+W/2-155, t1topY, 310, t1topH, '#2E7D32','#eef7ee','مثل ناري — لا يبصرون','١٧','مَثَلُهُمْ كَنَارٍ','p4_mth_nar');
+  const t1botY=t1topY+t1topH+G;
+  const smmBox = box(M+W/2+G/2, t1botY, half, 82, '#2E7D32','#eef7ee','صُمٌّ — لا يرجعون','١٨','صُمٌّ بُكْمٌ','p4_mth_smm');
+  const maaBox = box(M, t1botY, half, 82, '#2E7D32','#eef7ee','مثل مائي\n(محيط بالكافرين)','١٩–٢٠','كَصَيِّبٍ','p4_mth_maa');
+
+  const t2topY=t1botY+82+G; const t2topH=80;
+  const brqBox = box(M+W/2-155, t2topY, 310, t2topH, '#1565C0','#eef0fb','البرق — دليل القدرة','٢٠','يَكَادُ ٱلْبَرْقُ','p4_brq_dll');
+  const t2botY=t2topY+t2topH+G;
+  const ndaBox = box(M+W/2+G/2, t2botY, half, 90, '#1565C0','#eef0fb','أول نداء\n(العبادة → التقوى)','٢١','يَـٰٓأَيُّهَا ٱلنَّاسُ','p4_nda_ibd');
+  const wsmBox = box(M, t2botY, half, 90, '#1565C0','#eef0fb','تسخير الوسائل\nوأنتم تعلمون\n(موصول مفرد)','٢٢','ٱلَّذِى جَعَلَ','p4_nda_wsm');
+
+  const rectY=t2botY+90+G; const rectH=84;
+  const tcdBox = box(M, rectY, W, rectH, '#B71C1C','#fdecea','تحدي الصدق وفشله\nنار حقيقية أعدت للكافرين','٢٣','وَإِن كُنتُمْ فِى رَيْبٍ','p4_tcd_all');
+
+  const lnkY = rectY+rectH+8;
+
+  svg.innerHTML = `
+    <rect width="520" height="730" fill="#fffdf5"/>
+    <rect x="0" y="0" width="520" height="54" fill="#dfc28a" stroke="#c9a227" stroke-width="2.5"/>
+    <line x1="0" y1="54" x2="520" y2="54" stroke="#8B6914" stroke-width="2"/>
+    <text x="14" y="34" font-family="Traditional Arabic,Arial" font-size="20" font-weight="bold" fill="#3E1F00">ص ٤</text>
+    <text x="260" y="24" font-family="Traditional Arabic,Arial" font-size="17" font-weight="bold" text-anchor="middle" fill="#3E1F00">سورة البقرة</text>
+    <text x="260" y="44" font-family="Traditional Arabic,Arial" font-size="12" text-anchor="middle" fill="#6B3A10">٧ آيات · من آية ١٧ إلى آية ٢٣</text>
+    <rect x="450" y="8" width="58" height="32" fill="#c9a227" stroke="#8B6914" stroke-width="1.5" rx="14"/>
+    <text x="479" y="30" font-family="Traditional Arabic,Arial" font-size="14" text-anchor="middle" fill="#fff" font-weight="bold">١٧–٢٣</text>
+
+    <line x1="${cx}" y1="${t1topY+t1topH}" x2="${M+half/2}" y2="${t1botY}" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="${t1topY+t1topH}" x2="${M+W/2+G/2+half/2}" y2="${t1botY}" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="${t2topY+t2topH}" x2="${M+half/2}" y2="${t2botY}" stroke="#1565C0" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="${cx}" y1="${t2topY+t2topH}" x2="${M+W/2+G/2+half/2}" y2="${t2botY}" stroke="#1565C0" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+
+    ${narBox}${smmBox}${maaBox}${brqBox}${ndaBox}${wsmBox}${tcdBox}
+
+    <!-- الرابط الذهني -->
+    <rect x="10" y="${lnkY}" width="500" height="46" rx="10" fill="rgba(230,81,0,0.07)" stroke="rgba(230,81,0,0.4)" stroke-width="1.5"/>
+    <text x="260" y="${lnkY+16}" font-family="Traditional Arabic,Arial" font-size="11" text-anchor="middle" fill="#E65100" opacity="0.8">🔗 الرابط الذهني</text>
+    <text x="260" y="${lnkY+36}" font-family="'Amiri Quran','Traditional Arabic',serif" font-size="13" text-anchor="middle" fill="#7B2800">الأمثال تُظهر العجز  ←  النداء بالعبادة  ←  التحدي والنار</text>
+
+    <text x="14"  y="722" font-family="Traditional Arabic,Arial" font-size="10" fill="#aaa">آخر آية: ٢٣</text>
+    <text x="260" y="722" font-family="Traditional Arabic,Arial" font-size="10" text-anchor="middle" fill="#ccc">اضغط على أي صندوق لرؤية الآية والاستماع إليها</text>
+  `;
+  attachClickHandler(svg);
+  return svg;
+}
+
+// ══════════════════════════════════════════
+// إدارة الصفحات
+// ══════════════════════════════════════════
+const pages = { 1: buildPage1, 2: buildPage2, 3: buildPage3, 4: buildPage4 };
+const totalSpreads = 2; // فرشتان: (1,2) و (3,4)
 let currentSpread = 0;
 
 function getSpreadPages(s) {
-  const r = s * 2 + 1;
-  return { right: r, left: r + 1 };
+  return { right: s*2+1, left: s*2+2 };
 }
-
+function toArabicNum(n) {
+  return n.toString().replace(/\d/g, d=>'٠١٢٣٤٥٦٧٨٩'[d]);
+}
 function renderPage(container, pageNum) {
   const numEl = container.querySelector('.page-num');
   container.innerHTML = '';
@@ -244,11 +644,10 @@ function renderPage(container, pageNum) {
   } else {
     container.classList.add('blank-page');
     const ph = document.createElement('span');
-    ph.textContent = `صفحة ${pageNum} — قيد الإعداد`;
+    ph.textContent = `صفحة ${pageNum}`;
     container.appendChild(ph);
   }
 }
-
 function renderSpread() {
   const { right, left } = getSpreadPages(currentSpread);
   document.getElementById('right-num').textContent = toArabicNum(right);
@@ -256,204 +655,19 @@ function renderSpread() {
   renderPage(document.getElementById('right-page'), right);
   renderPage(document.getElementById('left-page'),  left);
   document.getElementById('btn-prev').disabled = currentSpread === 0;
-  const maxSpread = Math.ceil(Math.max(...Object.keys(pages).map(Number)) / 2) - 1;
-  document.getElementById('btn-next').disabled = currentSpread >= maxSpread;
+  document.getElementById('btn-next').disabled = currentSpread >= totalSpreads-1;
   document.getElementById('spread-label').textContent =
     `ص ${toArabicNum(right)}–${toArabicNum(left)}`;
+  audioEl.pause(); audioEl.src=''; statusEl.textContent='';
 }
-
 function turnPage(dir) { currentSpread += dir; renderSpread(); }
 
-function toArabicNum(n) {
-  return n.toString().replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);
-}
+// لوحة المفاتيح
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft'  && currentSpread < totalSpreads-1) turnPage(1);
+  if (e.key === 'ArrowRight' && currentSpread > 0)              turnPage(-1);
+});
 
-// ══════════════════════════════════════════
-// مساعد: صندوق قابل للضغط
-// box(x,y,w,h, stroke,fill, label,ayah, keyword, vkey, showAyah)
-// ══════════════════════════════════════════
-function box(x, y, w, h, stroke, fill, label, ayah, keyword, vkey, showAyah = true) {
-  const cx  = x + w / 2;
-  const kwY = y + 36 + Math.round((h - 36) / 2) + 10;
-  const kwText = showAyah ? `${keyword} ﴿${ayah}﴾` : keyword;
-  return `
-    <g class="clickable" data-vkey="${vkey}">
-      <rect class="box-bg" x="${x}" y="${y}" width="${w}" height="${h}"
-            fill="${fill}" stroke="${stroke}" stroke-width="2.5" rx="8"/>
-      <!-- اسم القسم — بارز كبير في أعلى المنتصف -->
-      <text x="${cx}" y="${y+27}" font-family="Traditional Arabic,Arial" font-size="21"
-            font-weight="bold" text-anchor="middle" fill="${stroke}">${label}</text>
-      <line x1="${x+14}" y1="${y+34}" x2="${x+w-14}" y2="${y+34}"
-            stroke="${stroke}" stroke-width="1.2" opacity="0.5"/>
-      <!-- الكلمة المفتاحية (+ رقم الآية على رؤوس المواضيع فقط) -->
-      <text x="${cx}" y="${kwY}"
-            font-family="'Amiri Quran','Traditional Arabic',serif"
-            font-size="26" text-anchor="middle" font-weight="bold" fill="#cc0000">${kwText}</text>
-      <!-- تلميح -->
-      <text x="${cx}" y="${y+h-5}" font-family="Traditional Arabic,Arial" font-size="8"
-            text-anchor="middle" fill="${stroke}" opacity="0.35">اضغط لرؤية الآية كاملة</text>
-    </g>`;
-}
-
-// ══════════════════════════════════════════
-// صفحة 1
-// ══════════════════════════════════════════
-function buildPage1() {
-  const ns  = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 520 710');
-  svg.setAttribute('xmlns', ns);
-
-  // تسجيل بيانات الآيات في المخزن العالمي
-  Object.assign(_popupData, {
-    p1_bas: { label:'بسملة',         ayah:'١',    html:'<span class="kw">بِسْمِ ٱللَّهِ</span> ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ' },
-    p1_hmd: { label:'حمد',           ayah:'٢',    html:'<span class="kw">ٱلْحَمْدُ لِلَّهِ</span> رَبِّ ٱلْعَـٰلَمِينَ' },
-    p1_rhm: { label:'رحمة',          ayah:'٣',    html:'<span class="kw">ٱلرَّحْمَـٰنِ</span> ٱلرَّحِيمِ' },
-    p1_mlk: { label:'ملك',           ayah:'٤',    html:'<span class="kw">مَالِكِ</span> يَوْمِ ٱلدِّينِ' },
-    p1_ikl: { label:'إخلاص',        ayah:'٥',    html:'<span class="kw">إِيَّاكَ</span> نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ' },
-    p1_hdy1: { label:'هداية',           ayah:'٦', html:'<span class="kw">ٱهْدِنَا</span> ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ' },
-    p1_hdy2: { label:'تخصيص الهداية', ayah:'٧', html:'<span class="kw">صِرَٰطَ</span> ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ<br>غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ' },
-  });
-
-  const G = 10, M = 12, W = 520 - M*2;
-
-  // ── القسم المثلثي ──
-  // بسملة (أعلى المنتصف)
-  const basBox  = box(M+W/2-165, 56,  330, 90, '#2E7D32','#eef7ee',
-                      'بسملة', '١', 'بِسْمِ ٱللَّهِ', 'p1_bas');
-  // رحمة (أسفل يسار) — بدون رقم آية
-  const rahmBox = box(M,          156, W/2-G/2, 100, '#2E7D32','#eef7ee',
-                      'رحمة', '٣', 'ٱلرَّحْمَـٰنِ', 'p1_rhm', false);
-  // حمد (أسفل يمين) — بدون رقم آية
-  const hamdBox = box(M+W/2+G/2, 156, W/2-G/2, 100, '#2E7D32','#eef7ee',
-                      'حمد', '٢', 'ٱلْحَمْدُ لِلَّهِ', 'p1_hmd', false);
-
-  // ── المستطيل الأول: ملك | إخلاص ──
-  const rH2 = 125, rY2 = 268;
-  const malikBox  = box(M+W/2+G/2, rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
-                        'ملك',    '٤', 'مَالِكِ', 'p1_mlk');
-  const ikhlasBox = box(M,          rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
-                        'إخلاص', '٥', 'إِيَّاكَ', 'p1_ikl', false);
-
-  // ── المستطيل الثالث: هداية | تخصيص الهداية ──
-  const hydBox = box(M+W/2+G/2, 405, W/2-G/2, 110, '#E65100','#fef6ee',
-                     'هداية',           '٦', 'ٱهْدِنَا',        'p1_hdy1');
-  const tkhBox = box(M,          405, W/2-G/2, 110, '#E65100','#fef6ee',
-                     'تخصيص الهداية', '٧', 'صِرَاطَ',          'p1_hdy2');
-
-  // خطوط رابطة: بسملة → حمد ورحمة
-  const connectors = `
-    <line x1="200" y1="146" x2="${M+(W/2-G/2)/2}" y2="156"
-          stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
-    <line x1="320" y1="146" x2="${M+W/2+G/2+(W/2-G/2)/2}" y2="156"
-          stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>`;
-
-  svg.innerHTML = `
-    <!-- خلفية -->
-    <rect width="520" height="710" fill="#fffdf5"/>
-
-    <!-- ══ رأس الصفحة ══ -->
-    <rect x="0" y="0" width="520" height="54" fill="#dfc28a" stroke="#c9a227" stroke-width="2.5"/>
-    <line x1="0" y1="54" x2="520" y2="54" stroke="#8B6914" stroke-width="2"/>
-    <text x="14" y="34" font-family="Traditional Arabic,Arial" font-size="20"
-          font-weight="bold" fill="#3E1F00">ص ١</text>
-    <text x="260" y="24" font-family="Traditional Arabic,Arial" font-size="17"
-          font-weight="bold" text-anchor="middle" fill="#3E1F00">سورة الفاتحة</text>
-    <text x="260" y="44" font-family="Traditional Arabic,Arial" font-size="12"
-          text-anchor="middle" fill="#6B3A10">٧ آيات · من آية ١ إلى آية ٧</text>
-    <rect x="450" y="8" width="58" height="32" fill="#c9a227" stroke="#8B6914" stroke-width="1.5" rx="14"/>
-    <text x="479" y="30" font-family="Traditional Arabic,Arial" font-size="14"
-          text-anchor="middle" fill="#fff" font-weight="bold">١ – ٧</text>
-
-    ${connectors}
-    ${basBox}
-    ${rahmBox}
-    ${hamdBox}
-    ${malikBox}
-    ${ikhlasBox}
-    ${hydBox}
-    ${tkhBox}
-
-    <!-- تذييل: آخر آية -->
-    <text x="14" y="700" font-family="Traditional Arabic,Arial" font-size="10"
-          fill="#aaa">آخر آية: ٧</text>
-    <text x="260" y="700" font-family="Traditional Arabic,Arial" font-size="10"
-          text-anchor="middle" fill="#ccc">اضغط على أي صندوق لرؤية الآية كاملة</text>
-  `;
-
-  attachClickHandler(svg);
-  return svg;
-}
-
-// ══════════════════════════════════════════
-// صفحة 2 — سورة البقرة آيات 1–5
-// ══════════════════════════════════════════
-function buildPage2() {
-  const ns  = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 520 710');
-  svg.setAttribute('xmlns', ns);
-
-  Object.assign(_popupData, {
-    p2_ijz: { label:'إعجاز',        ayah:'١', html:'<span class="kw">الٓمٓ</span>' },
-    p2_ktb: { label:'كتاب المتقين', ayah:'٢', html:'<span class="kw">ذَٰلِكَ</span> ٱلْكِتَـٰبُ لَا رَيْبَ فِيهِ هُدًى لِّلْمُتَّقِينَ' },
-    p2_ghb: { label:'غيبي',         ayah:'٣', html:'ٱلَّذِينَ يُؤْمِنُونَ بِ<span class="kw">ٱلْغَيْبِ</span> وَيُقِيمُونَ ٱلصَّلَوٰةَ وَمِمَّا رَزَقْنَـٰهُمْ يُنفِقُونَ' },
-    p2_why: { label:'وحي يقيني',    ayah:'٤', html:'وَٱلَّذِينَ يُؤْمِنُونَ بِمَآ <span class="kw">أُنزِلَ</span> إِلَيْكَ وَمَآ أُنزِلَ مِن قَبْلِكَ وَبِٱلْـَٔاخِرَةِ هُمْ يُوقِنُونَ' },
-    p2_hdy: { label:'هدى وفلاح',   ayah:'٥', html:'<span class="kw">أُو۟لَـٰٓئِكَ</span> عَلَىٰ هُدًى مِّن رَّبِّهِمْ وَأُو۟لَـٰٓئِكَ هُمُ ٱلْمُفْلِحُونَ' },
-  });
-
-  const G = 10, M = 12, W = 520 - M*2;
-
-  const ijazBox  = box(M+W/2-165, 56,  330, 90, '#2E7D32','#eef7ee',
-                       'إعجاز',        '١', 'الٓمٓ',       'p2_ijz');
-  const kitabBox = box(M+W/2+G/2, 156, W/2-G/2, 100, '#2E7D32','#eef7ee',
-                       'كتاب المتقين', '٢', 'ذَٰلِكَ',    'p2_ktb');
-  const ghaybBox = box(M,          156, W/2-G/2, 100, '#2E7D32','#eef7ee',
-                       'إيمان غيبي',         '٣', 'ٱلَّذِينَ', 'p2_ghb');
-
-  const rH2 = 125, rY2 = 268;
-  const wahyBox = box(M+W/2+G/2, rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
-                      'وحي يقيني', '٤', 'وَٱلَّذِينَ',      'p2_why');
-  const hudaBox = box(M,          rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
-                      'هدى وفلاح (اسم إشارة مفرد للبعيد)', '٥', 'أُو۟لَـٰٓئِكَ', 'p2_hdy');
-
-  const connectors = `
-    <line x1="200" y1="146" x2="${M+(W/2-G/2)/2}" y2="156"
-          stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
-    <line x1="320" y1="146" x2="${M+W/2+G/2+(W/2-G/2)/2}" y2="156"
-          stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>`;
-
-  svg.innerHTML = `
-    <rect width="520" height="710" fill="#fffdf5"/>
-    <rect x="0" y="0" width="520" height="54" fill="#dfc28a" stroke="#c9a227" stroke-width="2.5"/>
-    <line x1="0" y1="54" x2="520" y2="54" stroke="#8B6914" stroke-width="2"/>
-    <text x="14" y="34" font-family="Traditional Arabic,Arial" font-size="20"
-          font-weight="bold" fill="#3E1F00">ص ٢</text>
-    <text x="260" y="24" font-family="Traditional Arabic,Arial" font-size="17"
-          font-weight="bold" text-anchor="middle" fill="#3E1F00">سورة البقرة</text>
-    <text x="260" y="44" font-family="Traditional Arabic,Arial" font-size="12"
-          text-anchor="middle" fill="#6B3A10">٥ آيات · من آية ١ إلى آية ٥</text>
-    <rect x="450" y="8" width="58" height="32" fill="#c9a227" stroke="#8B6914" stroke-width="1.5" rx="14"/>
-    <text x="479" y="30" font-family="Traditional Arabic,Arial" font-size="14"
-          text-anchor="middle" fill="#fff" font-weight="bold">١ – ٥</text>
-    ${connectors}
-    ${ijazBox}
-    ${kitabBox}
-    ${ghaybBox}
-    ${wahyBox}
-    ${hudaBox}
-    <text x="14" y="700" font-family="Traditional Arabic,Arial" font-size="10" fill="#aaa">آخر آية: ٥</text>
-    <text x="260" y="700" font-family="Traditional Arabic,Arial" font-size="10"
-          text-anchor="middle" fill="#ccc">اضغط على أي صندوق لرؤية الآية كاملة</text>
-  `;
-
-  attachClickHandler(svg);
-  return svg;
-}
-
-// ══════════════════════════════════════════
-// تشغيل
-// ══════════════════════════════════════════
 renderSpread();
 </script>
 </body>
