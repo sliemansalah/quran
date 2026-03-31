@@ -270,29 +270,28 @@ function toArabicNum(n) {
 
 // ══════════════════════════════════════════
 // مساعد: صندوق قابل للضغط
-// box(x,y,w,h, stroke,fill, label,ayah, keyword, vkey)
+// box(x,y,w,h, stroke,fill, label,ayah, keyword, vkey, showAyah)
 // ══════════════════════════════════════════
-function box(x, y, w, h, stroke, fill, label, ayah, keyword, vkey) {
+function box(x, y, w, h, stroke, fill, label, ayah, keyword, vkey, showAyah = true) {
   const cx  = x + w / 2;
-  const kwY = y + Math.round(h / 2) + 13;
+  const kwY = y + 36 + Math.round((h - 36) / 2) + 10;
+  const kwText = showAyah ? `${keyword} ﴿${ayah}﴾` : keyword;
   return `
     <g class="clickable" data-vkey="${vkey}">
       <rect class="box-bg" x="${x}" y="${y}" width="${w}" height="${h}"
-            fill="${fill}" stroke="${stroke}" stroke-width="2" rx="8"/>
-      <!-- اسم القسم يسار، رقم الآية يمين -->
-      <text x="${x+10}" y="${y+19}" font-family="Traditional Arabic,Arial" font-size="13"
-            font-weight="bold" text-anchor="start" fill="${stroke}">${label}</text>
-      <text x="${x+w-10}" y="${y+19}" font-family="Traditional Arabic,Arial" font-size="12"
-            text-anchor="end" fill="${stroke}">آية ${ayah}</text>
-      <line x1="${x+10}" y1="${y+25}" x2="${x+w-10}" y2="${y+25}"
-            stroke="${stroke}" stroke-width="0.8" opacity="0.5"/>
-      <!-- الكلمة المفتاحية -->
+            fill="${fill}" stroke="${stroke}" stroke-width="2.5" rx="8"/>
+      <!-- اسم القسم — بارز كبير في أعلى المنتصف -->
+      <text x="${cx}" y="${y+27}" font-family="Traditional Arabic,Arial" font-size="21"
+            font-weight="bold" text-anchor="middle" fill="${stroke}">${label}</text>
+      <line x1="${x+14}" y1="${y+34}" x2="${x+w-14}" y2="${y+34}"
+            stroke="${stroke}" stroke-width="1.2" opacity="0.5"/>
+      <!-- الكلمة المفتاحية (+ رقم الآية على رؤوس المواضيع فقط) -->
       <text x="${cx}" y="${kwY}"
             font-family="'Amiri Quran','Traditional Arabic',serif"
-            font-size="22" text-anchor="middle" font-weight="bold" fill="#cc0000">${keyword}</text>
+            font-size="26" text-anchor="middle" font-weight="bold" fill="#cc0000">${kwText}</text>
       <!-- تلميح -->
-      <text x="${cx}" y="${y+h-6}" font-family="Traditional Arabic,Arial" font-size="8"
-            text-anchor="middle" fill="${stroke}" opacity="0.4">اضغط لرؤية الآية كاملة</text>
+      <text x="${cx}" y="${y+h-5}" font-family="Traditional Arabic,Arial" font-size="8"
+            text-anchor="middle" fill="${stroke}" opacity="0.35">اضغط لرؤية الآية كاملة</text>
     </g>`;
 }
 
@@ -312,7 +311,8 @@ function buildPage1() {
     p1_rhm: { label:'رحمة',          ayah:'٣',    html:'<span class="kw">ٱلرَّحْمَـٰنِ</span> ٱلرَّحِيمِ' },
     p1_mlk: { label:'ملك',           ayah:'٤',    html:'<span class="kw">مَالِكِ</span> يَوْمِ ٱلدِّينِ' },
     p1_ikl: { label:'إخلاص',        ayah:'٥',    html:'<span class="kw">إِيَّاكَ</span> نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ' },
-    p1_hdy: { label:'هداية مخصصة', ayah:'٦–٧', html:'<span class="kw">ٱهْدِنَا</span> ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ<br>صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ<br>غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ' },
+    p1_hdy1: { label:'هداية',           ayah:'٦', html:'<span class="kw">ٱهْدِنَا</span> ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ' },
+    p1_hdy2: { label:'تخصيص الهداية', ayah:'٧', html:'<span class="kw">صِرَٰطَ</span> ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ<br>غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ' },
   });
 
   const G = 10, M = 12, W = 520 - M*2;
@@ -321,23 +321,25 @@ function buildPage1() {
   // بسملة (أعلى المنتصف)
   const basBox  = box(M+W/2-165, 56,  330, 90, '#2E7D32','#eef7ee',
                       'بسملة', '١', 'بِسْمِ ٱللَّهِ', 'p1_bas');
-  // رحمة (أسفل يسار)
+  // رحمة (أسفل يسار) — بدون رقم آية
   const rahmBox = box(M,          156, W/2-G/2, 100, '#2E7D32','#eef7ee',
-                      'رحمة', '٣', 'ٱلرَّحْمَـٰنِ', 'p1_rhm');
-  // حمد (أسفل يمين)
+                      'رحمة', '٣', 'ٱلرَّحْمَـٰنِ', 'p1_rhm', false);
+  // حمد (أسفل يمين) — بدون رقم آية
   const hamdBox = box(M+W/2+G/2, 156, W/2-G/2, 100, '#2E7D32','#eef7ee',
-                      'حمد', '٢', 'ٱلْحَمْدُ لِلَّهِ', 'p1_hmd');
+                      'حمد', '٢', 'ٱلْحَمْدُ لِلَّهِ', 'p1_hmd', false);
 
   // ── المستطيل الأول: ملك | إخلاص ──
   const rH2 = 125, rY2 = 268;
   const malikBox  = box(M+W/2+G/2, rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
                         'ملك',    '٤', 'مَالِكِ', 'p1_mlk');
   const ikhlasBox = box(M,          rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
-                        'إخلاص', '٥', 'إِيَّاكَ', 'p1_ikl');
+                        'إخلاص', '٥', 'إِيَّاكَ', 'p1_ikl', false);
 
-  // ── المستطيل الثاني: هداية مخصصة ──
-  const hidBox = box(M, 405, W, 105, '#E65100','#fef6ee',
-                     'هداية مخصصة', '٦–٧', 'ٱهْدِنَا ٱلصِّرَاطَ', 'p1_hdy');
+  // ── المستطيل الثالث: هداية | تخصيص الهداية ──
+  const hydBox = box(M+W/2+G/2, 405, W/2-G/2, 110, '#E65100','#fef6ee',
+                     'هداية',           '٦', 'ٱهْدِنَا',        'p1_hdy1');
+  const tkhBox = box(M,          405, W/2-G/2, 110, '#E65100','#fef6ee',
+                     'تخصيص الهداية', '٧', 'صِرَاطَ',          'p1_hdy2');
 
   // خطوط رابطة: بسملة → حمد ورحمة
   const connectors = `
@@ -351,17 +353,17 @@ function buildPage1() {
     <rect width="520" height="710" fill="#fffdf5"/>
 
     <!-- ══ رأس الصفحة ══ -->
-    <rect x="0" y="0" width="520" height="46" fill="#f5ede0"/>
-    <line x1="0" y1="46" x2="520" y2="46" stroke="#c9a227" stroke-width="1.5"/>
-    <text x="14" y="30" font-family="Traditional Arabic,Arial" font-size="19"
-          font-weight="bold" fill="#6B3A10">ص ١</text>
-    <text x="260" y="20" font-family="Traditional Arabic,Arial" font-size="13"
-          font-weight="bold" text-anchor="middle" fill="#8B4513">سورة الفاتحة</text>
-    <text x="260" y="38" font-family="Traditional Arabic,Arial" font-size="11"
-          text-anchor="middle" fill="#a0704a">٧ آيات · من آية ١ إلى آية ٧</text>
-    <rect x="452" y="8" width="54" height="28" fill="none" stroke="#c9a227" stroke-width="1" rx="14"/>
-    <text x="479" y="27" font-family="Traditional Arabic,Arial" font-size="13"
-          text-anchor="middle" fill="#8B4513" font-weight="bold">١ – ٧</text>
+    <rect x="0" y="0" width="520" height="54" fill="#dfc28a" stroke="#c9a227" stroke-width="2.5"/>
+    <line x1="0" y1="54" x2="520" y2="54" stroke="#8B6914" stroke-width="2"/>
+    <text x="14" y="34" font-family="Traditional Arabic,Arial" font-size="20"
+          font-weight="bold" fill="#3E1F00">ص ١</text>
+    <text x="260" y="24" font-family="Traditional Arabic,Arial" font-size="17"
+          font-weight="bold" text-anchor="middle" fill="#3E1F00">سورة الفاتحة</text>
+    <text x="260" y="44" font-family="Traditional Arabic,Arial" font-size="12"
+          text-anchor="middle" fill="#6B3A10">٧ آيات · من آية ١ إلى آية ٧</text>
+    <rect x="450" y="8" width="58" height="32" fill="#c9a227" stroke="#8B6914" stroke-width="1.5" rx="14"/>
+    <text x="479" y="30" font-family="Traditional Arabic,Arial" font-size="14"
+          text-anchor="middle" fill="#fff" font-weight="bold">١ – ٧</text>
 
     ${connectors}
     ${basBox}
@@ -369,7 +371,8 @@ function buildPage1() {
     ${hamdBox}
     ${malikBox}
     ${ikhlasBox}
-    ${hidBox}
+    ${hydBox}
+    ${tkhBox}
 
     <!-- تذييل: آخر آية -->
     <text x="14" y="700" font-family="Traditional Arabic,Arial" font-size="10"
@@ -406,13 +409,13 @@ function buildPage2() {
   const kitabBox = box(M+W/2+G/2, 156, W/2-G/2, 100, '#2E7D32','#eef7ee',
                        'كتاب المتقين', '٢', 'ذَٰلِكَ',    'p2_ktb');
   const ghaybBox = box(M,          156, W/2-G/2, 100, '#2E7D32','#eef7ee',
-                       'غيبي',         '٣', 'ٱلْغَيْبِ', 'p2_ghb');
+                       'إيمان غيبي',         '٣', 'ٱلَّذِينَ', 'p2_ghb');
 
   const rH2 = 125, rY2 = 268;
   const wahyBox = box(M+W/2+G/2, rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
-                      'وحي يقيني', '٤', 'أُنزِلَ',      'p2_why');
+                      'وحي يقيني', '٤', 'وَٱلَّذِينَ',      'p2_why');
   const hudaBox = box(M,          rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
-                      'هدى وفلاح', '٥', 'أُو۟لَـٰٓئِكَ', 'p2_hdy');
+                      'هدى وفلاح (اسم إشارة مفرد للبعيد)', '٥', 'أُو۟لَـٰٓئِكَ', 'p2_hdy');
 
   const connectors = `
     <line x1="200" y1="146" x2="${M+(W/2-G/2)/2}" y2="156"
@@ -422,17 +425,17 @@ function buildPage2() {
 
   svg.innerHTML = `
     <rect width="520" height="710" fill="#fffdf5"/>
-    <rect x="0" y="0" width="520" height="46" fill="#f5ede0"/>
-    <line x1="0" y1="46" x2="520" y2="46" stroke="#c9a227" stroke-width="1.5"/>
-    <text x="14" y="30" font-family="Traditional Arabic,Arial" font-size="19"
-          font-weight="bold" fill="#6B3A10">ص ٢</text>
-    <text x="260" y="20" font-family="Traditional Arabic,Arial" font-size="13"
-          font-weight="bold" text-anchor="middle" fill="#8B4513">سورة البقرة</text>
-    <text x="260" y="38" font-family="Traditional Arabic,Arial" font-size="11"
-          text-anchor="middle" fill="#a0704a">٥ آيات · من آية ١ إلى آية ٥</text>
-    <rect x="452" y="8" width="54" height="28" fill="none" stroke="#c9a227" stroke-width="1" rx="14"/>
-    <text x="479" y="27" font-family="Traditional Arabic,Arial" font-size="13"
-          text-anchor="middle" fill="#8B4513" font-weight="bold">١ – ٥</text>
+    <rect x="0" y="0" width="520" height="54" fill="#dfc28a" stroke="#c9a227" stroke-width="2.5"/>
+    <line x1="0" y1="54" x2="520" y2="54" stroke="#8B6914" stroke-width="2"/>
+    <text x="14" y="34" font-family="Traditional Arabic,Arial" font-size="20"
+          font-weight="bold" fill="#3E1F00">ص ٢</text>
+    <text x="260" y="24" font-family="Traditional Arabic,Arial" font-size="17"
+          font-weight="bold" text-anchor="middle" fill="#3E1F00">سورة البقرة</text>
+    <text x="260" y="44" font-family="Traditional Arabic,Arial" font-size="12"
+          text-anchor="middle" fill="#6B3A10">٥ آيات · من آية ١ إلى آية ٥</text>
+    <rect x="450" y="8" width="58" height="32" fill="#c9a227" stroke="#8B6914" stroke-width="1.5" rx="14"/>
+    <text x="479" y="30" font-family="Traditional Arabic,Arial" font-size="14"
+          text-anchor="middle" fill="#fff" font-weight="bold">١ – ٥</text>
     ${connectors}
     ${ijazBox}
     ${kitabBox}
