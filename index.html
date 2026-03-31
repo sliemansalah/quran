@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>خريطة الحفظ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&display=swap" rel="stylesheet"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #c8a96e;
+      background-image: radial-gradient(ellipse at center, #d4b483 0%, #a07840 100%);
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Traditional Arabic', 'Arial', serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #nav-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 6px 20px;
+      background: rgba(0,0,0,0.25);
+      flex-shrink: 0;
+    }
+    #nav-bar button {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.4);
+      color: #fff;
+      padding: 3px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+    #nav-bar button:hover { background: rgba(255,255,255,0.3); }
+    #nav-bar button:disabled { opacity: 0.35; cursor: default; }
+    #spread-label { color: #fff; font-size: 13px; min-width: 80px; text-align: center; }
+
+    #book {
+      flex: 1;
+      display: flex;
+      align-items: stretch;
+      padding: 12px 20px;
+      min-height: 0;
+    }
+
+    .page {
+      flex: 1;
+      background: #fffdf5;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    .page.active { display: flex; }
+    .page.right-page {
+      border-radius: 4px 0 0 4px;
+      box-shadow: -4px 0 12px rgba(0,0,0,0.2), inset -2px 0 6px rgba(0,0,0,0.05);
+    }
+    .page.left-page {
+      border-radius: 0 4px 4px 0;
+      box-shadow: 4px 0 12px rgba(0,0,0,0.2), inset 2px 0 6px rgba(0,0,0,0.05);
+    }
+
+    #spine {
+      width: 28px;
+      flex-shrink: 0;
+      background: linear-gradient(to right,
+        #8B6914 0%, #c9a227 25%, #e8c84a 45%,
+        #f5e070 50%, #e8c84a 55%, #c9a227 75%, #8B6914 100%);
+      box-shadow: 0 0 10px rgba(0,0,0,0.4);
+      z-index: 10;
+    }
+
+    .page-num {
+      position: absolute;
+      bottom: 8px;
+      font-size: 11px;
+      color: #888;
+    }
+    .right-page .page-num { left: 12px; }
+    .left-page  .page-num { right: 12px; }
+
+    .page svg { width: 100%; height: 100%; display: block; }
+
+    .blank-page {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ccc;
+      font-size: 18px;
+    }
+
+    /* ══ Popup ══ */
+    #popup-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    #popup-overlay.open { display: flex; }
+
+    #popup-box {
+      background: #fffdf5;
+      border: 2px solid #c9a227;
+      border-radius: 16px;
+      padding: 28px 36px 24px;
+      max-width: 75%;
+      min-width: 280px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+      position: relative;
+      animation: popIn 0.18s ease;
+    }
+    @keyframes popIn {
+      from { transform: scale(0.85); opacity: 0; }
+      to   { transform: scale(1);    opacity: 1; }
+    }
+
+    #popup-label {
+      font-size: 13px;
+      color: #8B4513;
+      font-weight: bold;
+      margin-bottom: 10px;
+      letter-spacing: 1px;
+    }
+    #popup-verse {
+      font-family: 'Amiri Quran', 'Traditional Arabic', serif;
+      font-size: 26px;
+      line-height: 1.8;
+      color: #000;
+      direction: rtl;
+    }
+    #popup-verse .kw { color: #cc0000; font-weight: bold; }
+
+    #popup-close {
+      position: absolute;
+      top: 10px;
+      left: 14px;
+      background: none;
+      border: none;
+      font-size: 22px;
+      color: #aaa;
+      cursor: pointer;
+      line-height: 1;
+    }
+    #popup-close:hover { color: #555; }
+
+    /* hover على الصناديق القابلة للضغط */
+    .clickable { cursor: pointer; }
+    .clickable:hover .box-bg { filter: brightness(0.94); }
+  </style>
+</head>
+<body>
+
+<!-- شريط التنقل -->
+<div id="nav-bar">
+  <button id="btn-next" onclick="turnPage(1)">&#x25C4; التالي</button>
+  <span id="spread-label">ص ١–٢</span>
+  <button id="btn-prev" onclick="turnPage(-1)" disabled>السابق &#x25BA;</button>
+</div>
+
+<!-- الكتاب -->
+<div id="book">
+  <div class="page right-page active" id="right-page">
+    <span class="page-num" id="right-num">١</span>
+  </div>
+  <div id="spine"></div>
+  <div class="page left-page active" id="left-page">
+    <span class="page-num" id="left-num">٢</span>
+  </div>
+</div>
+
+<!-- Popup -->
+<div id="popup-overlay" onclick="closePopup()">
+  <div id="popup-box" onclick="event.stopPropagation()">
+    <button id="popup-close" onclick="closePopup()">&#x2715;</button>
+    <div id="popup-label"></div>
+    <div id="popup-verse"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// مخزن بيانات الآيات العالمي
+// ══════════════════════════════════════════
+const _popupData = {};
+
+// ══════════════════════════════════════════
+// Popup
+// ══════════════════════════════════════════
+function showPopup(label, html) {
+  document.getElementById('popup-label').textContent = label;
+  document.getElementById('popup-verse').innerHTML = html;
+  document.getElementById('popup-overlay').classList.add('open');
+}
+function closePopup() {
+  document.getElementById('popup-overlay').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePopup(); });
+
+// ربط حدث النقر على SVG (بدل onclick مضمّن)
+function attachClickHandler(svg) {
+  svg.addEventListener('click', e => {
+    const g = e.target.closest('[data-vkey]');
+    if (!g) return;
+    const v = _popupData[g.dataset.vkey];
+    if (v) showPopup(v.label + '  ·  آية ' + v.ayah, v.html);
+  });
+}
+
+// ══════════════════════════════════════════
+// الصفحات
+// ══════════════════════════════════════════
+const pages = {
+  1: buildPage1,
+  2: buildPage2,
+};
+
+let currentSpread = 0;
+
+function getSpreadPages(s) {
+  const r = s * 2 + 1;
+  return { right: r, left: r + 1 };
+}
+
+function renderPage(container, pageNum) {
+  const numEl = container.querySelector('.page-num');
+  container.innerHTML = '';
+  if (numEl) container.appendChild(numEl);
+  const builder = pages[pageNum];
+  if (builder) {
+    container.appendChild(builder());
+    container.classList.remove('blank-page');
+  } else {
+    container.classList.add('blank-page');
+    const ph = document.createElement('span');
+    ph.textContent = `صفحة ${pageNum} — قيد الإعداد`;
+    container.appendChild(ph);
+  }
+}
+
+function renderSpread() {
+  const { right, left } = getSpreadPages(currentSpread);
+  document.getElementById('right-num').textContent = toArabicNum(right);
+  document.getElementById('left-num').textContent  = toArabicNum(left);
+  renderPage(document.getElementById('right-page'), right);
+  renderPage(document.getElementById('left-page'),  left);
+  document.getElementById('btn-prev').disabled = currentSpread === 0;
+  const maxSpread = Math.ceil(Math.max(...Object.keys(pages).map(Number)) / 2) - 1;
+  document.getElementById('btn-next').disabled = currentSpread >= maxSpread;
+  document.getElementById('spread-label').textContent =
+    `ص ${toArabicNum(right)}–${toArabicNum(left)}`;
+}
+
+function turnPage(dir) { currentSpread += dir; renderSpread(); }
+
+function toArabicNum(n) {
+  return n.toString().replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);
+}
+
+// ══════════════════════════════════════════
+// مساعد: صندوق قابل للضغط
+// box(x,y,w,h, stroke,fill, label,ayah, keyword, vkey)
+// ══════════════════════════════════════════
+function box(x, y, w, h, stroke, fill, label, ayah, keyword, vkey) {
+  const cx  = x + w / 2;
+  const kwY = y + Math.round(h / 2) + 13;
+  return `
+    <g class="clickable" data-vkey="${vkey}">
+      <rect class="box-bg" x="${x}" y="${y}" width="${w}" height="${h}"
+            fill="${fill}" stroke="${stroke}" stroke-width="2" rx="8"/>
+      <!-- اسم القسم يسار، رقم الآية يمين -->
+      <text x="${x+10}" y="${y+19}" font-family="Traditional Arabic,Arial" font-size="13"
+            font-weight="bold" text-anchor="start" fill="${stroke}">${label}</text>
+      <text x="${x+w-10}" y="${y+19}" font-family="Traditional Arabic,Arial" font-size="12"
+            text-anchor="end" fill="${stroke}">آية ${ayah}</text>
+      <line x1="${x+10}" y1="${y+25}" x2="${x+w-10}" y2="${y+25}"
+            stroke="${stroke}" stroke-width="0.8" opacity="0.5"/>
+      <!-- الكلمة المفتاحية -->
+      <text x="${cx}" y="${kwY}"
+            font-family="'Amiri Quran','Traditional Arabic',serif"
+            font-size="22" text-anchor="middle" font-weight="bold" fill="#cc0000">${keyword}</text>
+      <!-- تلميح -->
+      <text x="${cx}" y="${y+h-6}" font-family="Traditional Arabic,Arial" font-size="8"
+            text-anchor="middle" fill="${stroke}" opacity="0.4">اضغط لرؤية الآية كاملة</text>
+    </g>`;
+}
+
+// ══════════════════════════════════════════
+// صفحة 1
+// ══════════════════════════════════════════
+function buildPage1() {
+  const ns  = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 520 710');
+  svg.setAttribute('xmlns', ns);
+
+  // تسجيل بيانات الآيات في المخزن العالمي
+  Object.assign(_popupData, {
+    p1_bas: { label:'بسملة',         ayah:'١',    html:'<span class="kw">بِسْمِ ٱللَّهِ</span> ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ' },
+    p1_hmd: { label:'حمد',           ayah:'٢',    html:'<span class="kw">ٱلْحَمْدُ لِلَّهِ</span> رَبِّ ٱلْعَـٰلَمِينَ' },
+    p1_rhm: { label:'رحمة',          ayah:'٣',    html:'<span class="kw">ٱلرَّحْمَـٰنِ</span> ٱلرَّحِيمِ' },
+    p1_mlk: { label:'ملك',           ayah:'٤',    html:'<span class="kw">مَالِكِ</span> يَوْمِ ٱلدِّينِ' },
+    p1_ikl: { label:'إخلاص',        ayah:'٥',    html:'<span class="kw">إِيَّاكَ</span> نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ' },
+    p1_hdy: { label:'هداية مخصصة', ayah:'٦–٧', html:'<span class="kw">ٱهْدِنَا</span> ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ<br>صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ<br>غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ' },
+  });
+
+  const G = 10, M = 12, W = 520 - M*2;
+
+  // ── القسم المثلثي ──
+  // بسملة (أعلى المنتصف)
+  const basBox  = box(M+W/2-165, 56,  330, 90, '#2E7D32','#eef7ee',
+                      'بسملة', '١', 'بِسْمِ ٱللَّهِ', 'p1_bas');
+  // رحمة (أسفل يسار)
+  const rahmBox = box(M,          156, W/2-G/2, 100, '#2E7D32','#eef7ee',
+                      'رحمة', '٣', 'ٱلرَّحْمَـٰنِ', 'p1_rhm');
+  // حمد (أسفل يمين)
+  const hamdBox = box(M+W/2+G/2, 156, W/2-G/2, 100, '#2E7D32','#eef7ee',
+                      'حمد', '٢', 'ٱلْحَمْدُ لِلَّهِ', 'p1_hmd');
+
+  // ── المستطيل الأول: ملك | إخلاص ──
+  const rH2 = 125, rY2 = 268;
+  const malikBox  = box(M+W/2+G/2, rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
+                        'ملك',    '٤', 'مَالِكِ', 'p1_mlk');
+  const ikhlasBox = box(M,          rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
+                        'إخلاص', '٥', 'إِيَّاكَ', 'p1_ikl');
+
+  // ── المستطيل الثاني: هداية مخصصة ──
+  const hidBox = box(M, 405, W, 105, '#E65100','#fef6ee',
+                     'هداية مخصصة', '٦–٧', 'ٱهْدِنَا ٱلصِّرَاطَ', 'p1_hdy');
+
+  // خطوط رابطة: بسملة → حمد ورحمة
+  const connectors = `
+    <line x1="200" y1="146" x2="${M+(W/2-G/2)/2}" y2="156"
+          stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="320" y1="146" x2="${M+W/2+G/2+(W/2-G/2)/2}" y2="156"
+          stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>`;
+
+  svg.innerHTML = `
+    <!-- خلفية -->
+    <rect width="520" height="710" fill="#fffdf5"/>
+
+    <!-- ══ رأس الصفحة ══ -->
+    <rect x="0" y="0" width="520" height="46" fill="#f5ede0"/>
+    <line x1="0" y1="46" x2="520" y2="46" stroke="#c9a227" stroke-width="1.5"/>
+    <text x="14" y="30" font-family="Traditional Arabic,Arial" font-size="19"
+          font-weight="bold" fill="#6B3A10">ص ١</text>
+    <text x="260" y="20" font-family="Traditional Arabic,Arial" font-size="13"
+          font-weight="bold" text-anchor="middle" fill="#8B4513">سورة الفاتحة</text>
+    <text x="260" y="38" font-family="Traditional Arabic,Arial" font-size="11"
+          text-anchor="middle" fill="#a0704a">٧ آيات · من آية ١ إلى آية ٧</text>
+    <rect x="452" y="8" width="54" height="28" fill="none" stroke="#c9a227" stroke-width="1" rx="14"/>
+    <text x="479" y="27" font-family="Traditional Arabic,Arial" font-size="13"
+          text-anchor="middle" fill="#8B4513" font-weight="bold">١ – ٧</text>
+
+    ${connectors}
+    ${basBox}
+    ${rahmBox}
+    ${hamdBox}
+    ${malikBox}
+    ${ikhlasBox}
+    ${hidBox}
+
+    <!-- تذييل: آخر آية -->
+    <text x="14" y="700" font-family="Traditional Arabic,Arial" font-size="10"
+          fill="#aaa">آخر آية: ٧</text>
+    <text x="260" y="700" font-family="Traditional Arabic,Arial" font-size="10"
+          text-anchor="middle" fill="#ccc">اضغط على أي صندوق لرؤية الآية كاملة</text>
+  `;
+
+  attachClickHandler(svg);
+  return svg;
+}
+
+// ══════════════════════════════════════════
+// صفحة 2 — سورة البقرة آيات 1–5
+// ══════════════════════════════════════════
+function buildPage2() {
+  const ns  = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 520 710');
+  svg.setAttribute('xmlns', ns);
+
+  Object.assign(_popupData, {
+    p2_ijz: { label:'إعجاز',        ayah:'١', html:'<span class="kw">الٓمٓ</span>' },
+    p2_ktb: { label:'كتاب المتقين', ayah:'٢', html:'<span class="kw">ذَٰلِكَ</span> ٱلْكِتَـٰبُ لَا رَيْبَ فِيهِ هُدًى لِّلْمُتَّقِينَ' },
+    p2_ghb: { label:'غيبي',         ayah:'٣', html:'ٱلَّذِينَ يُؤْمِنُونَ بِ<span class="kw">ٱلْغَيْبِ</span> وَيُقِيمُونَ ٱلصَّلَوٰةَ وَمِمَّا رَزَقْنَـٰهُمْ يُنفِقُونَ' },
+    p2_why: { label:'وحي يقيني',    ayah:'٤', html:'وَٱلَّذِينَ يُؤْمِنُونَ بِمَآ <span class="kw">أُنزِلَ</span> إِلَيْكَ وَمَآ أُنزِلَ مِن قَبْلِكَ وَبِٱلْـَٔاخِرَةِ هُمْ يُوقِنُونَ' },
+    p2_hdy: { label:'هدى وفلاح',   ayah:'٥', html:'<span class="kw">أُو۟لَـٰٓئِكَ</span> عَلَىٰ هُدًى مِّن رَّبِّهِمْ وَأُو۟لَـٰٓئِكَ هُمُ ٱلْمُفْلِحُونَ' },
+  });
+
+  const G = 10, M = 12, W = 520 - M*2;
+
+  const ijazBox  = box(M+W/2-165, 56,  330, 90, '#2E7D32','#eef7ee',
+                       'إعجاز',        '١', 'الٓمٓ',       'p2_ijz');
+  const kitabBox = box(M+W/2+G/2, 156, W/2-G/2, 100, '#2E7D32','#eef7ee',
+                       'كتاب المتقين', '٢', 'ذَٰلِكَ',    'p2_ktb');
+  const ghaybBox = box(M,          156, W/2-G/2, 100, '#2E7D32','#eef7ee',
+                       'غيبي',         '٣', 'ٱلْغَيْبِ', 'p2_ghb');
+
+  const rH2 = 125, rY2 = 268;
+  const wahyBox = box(M+W/2+G/2, rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
+                      'وحي يقيني', '٤', 'أُنزِلَ',      'p2_why');
+  const hudaBox = box(M,          rY2, W/2-G/2, rH2, '#1565C0','#eef0fb',
+                      'هدى وفلاح', '٥', 'أُو۟لَـٰٓئِكَ', 'p2_hdy');
+
+  const connectors = `
+    <line x1="200" y1="146" x2="${M+(W/2-G/2)/2}" y2="156"
+          stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <line x1="320" y1="146" x2="${M+W/2+G/2+(W/2-G/2)/2}" y2="156"
+          stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>`;
+
+  svg.innerHTML = `
+    <rect width="520" height="710" fill="#fffdf5"/>
+    <rect x="0" y="0" width="520" height="46" fill="#f5ede0"/>
+    <line x1="0" y1="46" x2="520" y2="46" stroke="#c9a227" stroke-width="1.5"/>
+    <text x="14" y="30" font-family="Traditional Arabic,Arial" font-size="19"
+          font-weight="bold" fill="#6B3A10">ص ٢</text>
+    <text x="260" y="20" font-family="Traditional Arabic,Arial" font-size="13"
+          font-weight="bold" text-anchor="middle" fill="#8B4513">سورة البقرة</text>
+    <text x="260" y="38" font-family="Traditional Arabic,Arial" font-size="11"
+          text-anchor="middle" fill="#a0704a">٥ آيات · من آية ١ إلى آية ٥</text>
+    <rect x="452" y="8" width="54" height="28" fill="none" stroke="#c9a227" stroke-width="1" rx="14"/>
+    <text x="479" y="27" font-family="Traditional Arabic,Arial" font-size="13"
+          text-anchor="middle" fill="#8B4513" font-weight="bold">١ – ٥</text>
+    ${connectors}
+    ${ijazBox}
+    ${kitabBox}
+    ${ghaybBox}
+    ${wahyBox}
+    ${hudaBox}
+    <text x="14" y="700" font-family="Traditional Arabic,Arial" font-size="10" fill="#aaa">آخر آية: ٥</text>
+    <text x="260" y="700" font-family="Traditional Arabic,Arial" font-size="10"
+          text-anchor="middle" fill="#ccc">اضغط على أي صندوق لرؤية الآية كاملة</text>
+  `;
+
+  attachClickHandler(svg);
+  return svg;
+}
+
+// ══════════════════════════════════════════
+// تشغيل
+// ══════════════════════════════════════════
+renderSpread();
+</script>
+</body>
+</html>
