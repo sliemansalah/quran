@@ -257,11 +257,24 @@ let _currentAudio = { surah: 0, ayah: 0, ayahEnd: 0 };
 // رقم الشيخ ياسر الدوسري في API
 const DOSARI_ID = 10; // everyayah.com reciter id
 
-function ayahAudioURL(surah, ayahNum) {
+// مصادر الصوت بالترتيب — يجرب الأول فإن فشل ينتقل للتالي
+function ayahAudioURLs(surah, ayahNum) {
   const s = String(surah).padStart(3,'0');
   const a = String(ayahNum).padStart(3,'0');
-  // everyayah.com — Yasser Al-Dossary
-  return `https://everyayah.com/data/Yasser_Ad-Dossary_128kbps/${s}${a}.mp3`;
+  return [
+    // المصدر الأول: al-quran.info CDN
+    `https://audio.al-quran.info/audio/Yasser_Ad-Dossary_128kbps/${s}${a}.mp3`,
+    // المصدر الثاني: everyayah المباشر
+    `https://everyayah.com/data/Yasser_Ad-Dossary_128kbps/${s}${a}.mp3`,
+    // المصدر الثالث: islamic.network
+    `https://cdn.islamic.network/quran/audio/128/ar.yaseraldossari/${surah * 1000 + ayahNum * 1}.mp3`,
+    // الرابع: quran.com API
+    `https://verses.quran.com/Yasser_Ad-Dossary_128kbps/${s}${a}.mp3`,
+  ];
+}
+
+function ayahAudioURL(surah, ayahNum) {
+  return ayahAudioURLs(surah, ayahNum)[0];
 }
 
 const audioEl = document.getElementById('ayah-audio');
