@@ -254,47 +254,80 @@
 const _popupData = {};
 let _currentAudio = { surah: 0, ayah: 0, ayahEnd: 0 };
 
-// رقم الشيخ ياسر الدوسري في API
-const DOSARI_ID = 10; // everyayah.com reciter id
-
-// مصادر الصوت بالترتيب — يجرب الأول فإن فشل ينتقل للتالي
-function ayahAudioURLs(surah, ayahNum) {
-  const s = String(surah).padStart(3,'0');
-  const a = String(ayahNum).padStart(3,'0');
-  return [
-    // المصدر الأول: al-quran.info CDN
-    `https://audio.al-quran.info/audio/Yasser_Ad-Dossary_128kbps/${s}${a}.mp3`,
-    // المصدر الثاني: everyayah المباشر
-    `https://everyayah.com/data/Yasser_Ad-Dossary_128kbps/${s}${a}.mp3`,
-    // المصدر الثالث: islamic.network
-    `https://cdn.islamic.network/quran/audio/128/ar.yaseraldossari/${surah * 1000 + ayahNum * 1}.mp3`,
-    // الرابع: quran.com API
-    `https://verses.quran.com/Yasser_Ad-Dossary_128kbps/${s}${a}.mp3`,
-  ];
-}
-
-function ayahAudioURL(surah, ayahNum) {
-  return ayahAudioURLs(surah, ayahNum)[0];
-}
-
 const audioEl = document.getElementById('ayah-audio');
 const statusEl = document.getElementById('audio-status');
 const playBtn  = document.getElementById('play-btn');
 
-audioEl.addEventListener('play',  () => { statusEl.textContent = '▶ يُشغَّل...'; });
-audioEl.addEventListener('ended', () => { statusEl.textContent = '✓ انتهى'; });
-audioEl.addEventListener('error', () => { statusEl.textContent = '⚠ تعذّر التشغيل'; });
-audioEl.addEventListener('waiting',() => { statusEl.textContent = '⏳ جارٍ التحميل'; });
+// حساب رقم الآية المتسلسل في المصحف كاملاً (لـ islamic.network)
+const SURAH_STARTS = [0,1,8,294,493,669,789,954,1160,1235,1364,1473,1596,1707,1750,1802,1901,2029,2140,2250,2348,2483,2595,2673,2791,2855,2932,3159,3252,3340,3409,3469,3503,3533,3606,3660,3704,3750,3896,3970,4058,4133,4218,4272,4325,4414,4473,4510,4545,4583,4612,4630,4675,4735,4784,4846,4901,4979,5075,5104,5126,5150,5163,5177,5188,5199,5217,5227,5241,5271,5323,5375,5419,5447,5475,5495,5551,5591,5622,5672,5712,5756,5800,5829,5848,5884,5909,5931,5948,5967,5993,6023,6043,6058,6079,6090,6098,6106,6125,6130,6138,6146,6157,6168,6176,6179,6188,6197,6204,6207,6213,6216,6221,6225,6230,6236,6243];
+function ayahGlobalNum(surah, ayah) {
+  return (SURAH_STARTS[surah] || 0) + ayah;
+}
+
+function ayahAudioURLs(surah, ayahNum) {
+  const s = String(surah).padStart(3,'0');
+  const a = String(ayahNum).padStart(3,'0');
+  const g = ayahGlobalNum(surah, ayahNum);
+  return [
+    // المصدر الأساسي — everyayah.com (الاسم الصحيح: Dussary بحرفين ss)
+    `https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/${s}${a}.mp3`,
+    // بديل 1 — islamic.network
+    `https://cdn.islamic.network/quran/audio/128/ar.yaseraldossari/${g}.mp3`,
+    // بديل 2 — mp3quran.net
+    `https://server8.mp3quran.net/aldosri/${s}${a}.mp3`,
+    // بديل 3 — quranicaudio
+    `https://download.quranicaudio.com/quran/yasser_ad-dossary/${s}${a}.mp3`,
+  ];
+}
+
+let _urlIdx = 0;
+let _urlList = [];
 
 function playAyah() {
   const d = _currentAudio;
   if (!d.surah) return;
-  statusEl.textContent = '⏳ جارٍ التحميل';
-  audioEl.pause();
-  audioEl.src = ayahAudioURL(d.surah, d.ayahStart);
-  audioEl.load();
-  audioEl.play().catch(() => { statusEl.textContent = '⚠ تعذّر التشغيل'; });
+  _urlList = ayahAudioURLs(d.surah, d.ayahStart);
+  _urlIdx = 0;
+  tryPlayFrom(0);
 }
+
+function tryPlayFrom(idx) {
+  if (idx >= _urlList.length) {
+    statusEl.textContent = '⚠ تعذّر التشغيل';
+    playBtn.disabled = false;
+    return;
+  }
+  _urlIdx = idx;
+  statusEl.textContent = '⏳ جارٍ التحميل...';
+  playBtn.disabled = true;
+  audioEl.src = _urlList[idx];
+  audioEl.load();
+
+  const onCanPlay = () => {
+    audioEl.removeEventListener('canplaythrough', onCanPlay);
+    audioEl.removeEventListener('error', onErr);
+    audioEl.play().catch(() => tryPlayFrom(idx + 1));
+  };
+  const onErr = () => {
+    audioEl.removeEventListener('canplaythrough', onCanPlay);
+    audioEl.removeEventListener('error', onErr);
+    tryPlayFrom(idx + 1);
+  };
+  audioEl.addEventListener('canplaythrough', onCanPlay);
+  audioEl.addEventListener('error', onErr);
+
+  // timeout إن لم يستجب خلال 5 ثوانٍ
+  setTimeout(() => {
+    if (audioEl.readyState < 3 && audioEl.src === _urlList[idx]) {
+      audioEl.removeEventListener('canplaythrough', onCanPlay);
+      audioEl.removeEventListener('error', onErr);
+      tryPlayFrom(idx + 1);
+    }
+  }, 5000);
+}
+
+audioEl.addEventListener('play',  () => { statusEl.textContent = '▶ يُشغَّل'; playBtn.disabled = false; });
+audioEl.addEventListener('ended', () => { statusEl.textContent = '✓ انتهى'; playBtn.disabled = false; });
 
 // ══════════════════════════════════════════
 // Popup
